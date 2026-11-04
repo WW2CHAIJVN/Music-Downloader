@@ -1,0 +1,31 @@
+/* Hallmark · theme fonts, bundled locally so the offline app renders in them.
+ * Outfit 300/500 for display and figures, Onest 400/500 for body, per Ultraviolet.
+ * Latin subset only; CJK falls through to the system stack declared on --font-* in tokens.css. */
+@font-face {
+  font-family: "Outfit";
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url("./fonts/outfit-300.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Outfit";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./fonts/outfit-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Onest";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/onest-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Onest";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./fonts/onest-500.woff2") format("woff2");
+}

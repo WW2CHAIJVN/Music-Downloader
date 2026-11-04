@@ -1,0 +1,26 @@
+[
+ {
+  "name": "outfit-300.woff2",
+  "fam": "Outfit",
+  "w": 300,
+  "bytes": 9148
+ },
+ {
+  "name": "outfit-500.woff2",
+  "fam": "Outfit",
+  "w": 500,
+  "bytes": 8628
+ },
+ {
+  "name": "onest-400.woff2",
+  "fam": "Onest",
+  "w": 400,
+  "bytes": 7436
+ },
+ {
+  "name": "onest-500.woff2",
+  "fam": "Onest",
+  "w": 500,
+  "bytes": 7808
+ }
+]

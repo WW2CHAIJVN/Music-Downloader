@@ -1,7 +1,5 @@
 # Music Downloader
 
-【简体中文】([README.md](README.md)) | [English](README.en.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Русский](README.ru.md) | [Español](README.es.md) | [Français](README.fr.md)
-
 网易云音乐歌单批量下载器，Electron 桌面 GUI。
 
 粘贴歌单链接或 ID，选音质档位，即可批量下载并自动写入 ID3 标签与封面。
@@ -15,6 +13,48 @@
 - 扫码登录或粘贴 cookie，用于获取 VIP / 无损曲目
 - 断点续传（已存在且大于 10KB 的文件跳过）、磁盘剩余不足 1.5GB 自动停止
 - 内置网易云 API 服务（`@neteasecloudmusicapienhanced/api`），无需另外启动
+- 输入法组字保护：程序在组字途中改写输入框的值时，写入会挂到组字结束后补上，拼音不会再被提前提交（见下节）
+- 界面重做（Ultraviolet 夜间配色，Outfit / Onest 字体本地打包，离线可读）：左侧设置、右侧「下载台账」，五个计数在细线之间，进度是一条会走满的紫色标尺
+
+## 界面（1.1.0 起）
+
+沿用 Ultraviolet 主题的夜间配色：深紫的黑底、一种紫在两级强度、细发丝线代替卡片描边、
+药丸形控件。英文与数字用 Outfit 和 Onest，中文字形回落到系统里的微软雅黑 / Noto Sans SC。
+字体文件已打包进仓库（`src/renderer/fonts/`），断网也能正常显示。
+
+界面结构：
+
+```
+src/renderer/
+  index.html   结构
+  styles.css   页面样式（文件头是设计标记）
+  tokens.css   颜色、字体、间距、动效时长
+  base.css     基础规则
+  fonts.css    本地字体的 @font-face
+  fonts/       Outfit / Onest 的 woff2
+```
+
+## 输入法组字保护（1.1.0 起）
+
+Chromium 在输入法组字（拼音未上屏）期间被改写控件时会取消这次组字：
+`ni` + `hao` 可能落成「泥嚎」，或者干脆留下裸字母。纯 ASCII 输入不会触发，
+因为那时没有组字可取消。
+
+这套时序规则来自 DSH 插件 `ime-composer-guard`，那边兜住的是 contenteditable
+的 `contentEditable` 属性；本应用没有 contenteditable，代价最大的是 `value`、
+`disabled` 这类程序写入，所以同一套「组字期间挂起，组字结束重放最后请求值」
+挪到了它们身上：
+
+- 覆盖 `input` / `textarea` / `select` 的 `.value`、`.disabled`，以及
+  `setAttribute` / `removeAttribute` 的 `value`、`disabled`、`placeholder`
+- 只推迟写入时机，最终状态与不做保护时完全一致
+- 用户在组字期间自己敲进去的内容不受影响
+
+验证：
+
+```powershell
+npx electron scripts/verify-ime-guard.js
+```
 
 ## 目录结构
 
@@ -40,6 +80,27 @@ npm run dist
 产物在 `release/`：
 - `MusicDownloader-Setup-<version>.exe` — NSIS 安装包
 - `win-unpacked/MusicDownloader.exe` — 免安装版
+
+### 打包产物启动即退出
+
+如果 `win-unpacked\MusicDownloader.exe` 双击后闪一下就没了，先查环境变量：
+
+```powershell
+$env:ELECTRON_RUN_AS_NODE
+```
+
+它有值（通常是 `1`）时，Electron 会退化成纯 Node 解释器运行，主进程里那些 `app`、`BrowserWindow` 全是 undefined，进程于是立刻退出。
+在某些终端里不会报错，看起来就像程序崩了。清掉再跑：
+
+```powershell
+Remove-Item Env:ELECTRON_RUN_AS_NODE
+```
+
+判断是不是这个问题，跑一句就知道：正常应该输出 `v45.2.2`，而不是 Node 的版本号。
+
+```powershell
+npx electron --version
+```
 
 ## 命令行用法
 
