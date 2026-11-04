@@ -1,0 +1,50 @@
+{
+  "name": "music-downloader",
+  "version": "1.0.0",
+  "description": "网易云音乐歌单批量下载器（GUI）",
+  "main": "src/main/main.js",
+  "type": "commonjs",
+  "author": "",
+  "license": "ISC",
+  "scripts": {
+    "start": "electron .",
+    "pack:dir": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "dependencies": {
+    "@neteasecloudmusicapienhanced/api": "^4.41.1"
+  },
+  "devDependencies": {
+    "electron": "^45.2.2",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "local.musicdownloader",
+    "productName": "MusicDownloader",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "asar": false,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "artifactName": "MusicDownloader-Setup-${version}.${ext}"
+    }
+  }
+}

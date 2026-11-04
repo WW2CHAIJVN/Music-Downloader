@@ -1,0 +1,9 @@
+node_modules/
+release/
+_tools/
+_shots/
+*.log
+src/core/cookie.txt
+src/core/_result.json
+.cover-*.tmp.jpg
+*.part

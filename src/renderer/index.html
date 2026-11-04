@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline';" />
+  <title>网易云歌单批量下载器</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">网易云歌单批量下载器</div>
+    <div class="status">
+      <span id="loginBadge" class="badge badge-off">未登录</span>
+      <span id="apiBadge" class="badge badge-off">API 未就绪</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="panel panel-left">
+      <h2>1. 选择来源</h2>
+
+      <div class="field">
+        <label for="target">歌单链接 / 歌单 ID / 专辑链接</label>
+        <div class="row">
+          <input id="target" type="text" placeholder="https://music.163.com/playlist?id=3778678 或 3778678" />
+          <button id="btnPreview" class="btn">解析</button>
+        </div>
+        <div class="hint">支持 playlist / toplist / album 链接与纯数字 ID</div>
+      </div>
+
+      <div class="field">
+        <label>或选择曲目清单文件（.txt，每行以歌曲 ID 开头）</label>
+        <div class="row">
+          <button id="btnPickFile" class="btn btn-ghost">选择文件</button>
+          <span id="fileName" class="muted">未选择</span>
+        </div>
+      </div>
+
+      <div id="previewBox" class="preview hidden">
+        <div class="preview-head">
+          <strong id="plName"></strong>
+          <span id="plMeta" class="muted"></span>
+        </div>
+        <ol id="plSongs" class="songlist"></ol>
+      </div>
+
+      <h2>2. 下载设置</h2>
+
+      <div class="field">
+        <label for="level">音质档位</label>
+        <select id="level">
+          <option value="standard">标准 standard 128k</option>
+          <option value="higher">较高 higher 192k</option>
+          <option value="exhigh">极高 exhigh 320k</option>
+          <option value="lossless">无损 lossless FLAC</option>
+          <option value="hires">Hi-Res hires</option>
+          <option value="jymaster">超清母带 jymaster</option>
+          <option value="jyeffect">高清臻音 jyeffect</option>
+          <option value="sky">沉浸环绕声 sky</option>
+          <option value="vivid">臻音全景声 vivid</option>
+          <option value="dolby">杜比全景声 dolby</option>
+        </select>
+        <div class="hint">无权限时自动降级到实际可用档位，日志会标注「降级」</div>
+      </div>
+
+      <div class="field">
+        <label for="chain">回落链（可选，逗号分隔）</label>
+        <input id="chain" type="text" placeholder="例：jymaster,lossless" />
+      </div>
+
+      <div class="field">
+        <label for="out">输出目录</label>
+        <div class="row">
+          <input id="out" type="text" />
+          <button id="btnPickOut" class="btn btn-ghost">浏览</button>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="field">
+          <label for="concurrency">并发数</label>
+          <input id="concurrency" type="number" min="1" max="16" value="4" />
+        </div>
+        <div class="field">
+          <label for="limit">只下前 N 首（0=全部）</label>
+          <input id="limit" type="number" min="0" value="0" />
+        </div>
+      </div>
+
+      <div class="row actions">
+        <button id="btnStart" class="btn btn-primary">开始下载</button>
+        <button id="btnStop" class="btn btn-danger" disabled>停止</button>
+        <button id="btnOpenOut" class="btn btn-ghost">打开目录</button>
+      </div>
+    </section>
+
+    <section class="panel panel-right">
+      <div class="panel-head">
+        <h2>运行状态</h2>
+        <button id="btnLogin" class="btn btn-ghost btn-sm">登录 / Cookie</button>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><span id="stTotal">0</span><label>总曲目</label></div>
+        <div class="stat ok"><span id="stOk">0</span><label>成功</label></div>
+        <div class="stat skip"><span id="stSkip">0</span><label>跳过</label></div>
+        <div class="stat fail"><span id="stFail">0</span><label>失败</label></div>
+        <div class="stat trial"><span id="stTrial">0</span><label>试听未下</label></div>
+      </div>
+
+      <div class="progress"><div id="bar" class="bar"></div></div>
+
+      <pre id="log" class="log"></pre>
+    </section>
+  </main>
+
+  <div id="modal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-head">
+        <strong>登录 / Cookie</strong>
+        <button id="btnModalClose" class="btn btn-ghost btn-sm">关闭</button>
+      </div>
+      <div class="field">
+        <label>扫码登录</label>
+        <div class="row">
+          <button id="btnQr" class="btn">生成二维码</button>
+          <span id="qrStatus" class="muted"></span>
+        </div>
+        <div id="qrBox" class="qrbox hidden"><img id="qrImg" alt="登录二维码" /></div>
+      </div>
+      <div class="field">
+        <label for="cookieInput">或粘贴 cookie（含 MUSIC_U=...）</label>
+        <textarea id="cookieInput" rows="4" placeholder="MUSIC_U=...; __csrf=..."></textarea>
+        <div class="row">
+          <button id="btnSaveCookie" class="btn btn-primary btn-sm">保存</button>
+          <button id="btnCheckLogin" class="btn btn-ghost btn-sm">检查登录状态</button>
+          <span id="cookieStatus" class="muted"></span>
+        </div>
+      </div>
+      <div class="hint">cookie 保存在用户数据目录，用于下载 VIP / 无损曲目；不登录会拿到 45 秒试听片段。</div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
