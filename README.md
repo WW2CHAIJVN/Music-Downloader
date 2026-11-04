@@ -1,5 +1,7 @@
 # Music Downloader
 
+【简体中文】([README.md](README.md)) | [English](README.en.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Русский](README.ru.md) | [Español](README.es.md) | [Français](README.fr.md)
+
 网易云音乐歌单批量下载器，Electron 桌面 GUI。
 
 粘贴歌单链接或 ID，选音质档位，即可批量下载并自动写入 ID3 标签与封面。
