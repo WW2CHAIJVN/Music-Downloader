@@ -14,6 +14,36 @@
 
 * { box-sizing: border-box; }
 
+/* 滚动条：深色主题，替换系统默认的白色滚动条 */
+:root { color-scheme: dark; }
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 5px;
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+::-webkit-scrollbar-corner {
+  background: var(--bg);
+}
+
+/* 应用内滚动容器统一深色滚动条 */
+.panel,
+.songlist,
+.log {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) var(--bg);
+}
+
 html, body {
   margin: 0;
   height: 100%;
