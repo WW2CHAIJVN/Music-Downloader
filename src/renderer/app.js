@@ -167,7 +167,8 @@ $('target').addEventListener('keydown', (e) => {
 
 $('btnSearch').addEventListener('click', () => {
   state.fileTarget = '';
-  state.searchTarget = $('#searchKw') ? $('searchKw').value.trim() : '';
+  const kwEl = $('searchKw');
+  state.searchTarget = kwEl ? kwEl.value.trim() : '';
   $('fileName').textContent = '未选择';
   $('target').value = '';
   doSearch(state.searchTarget);
