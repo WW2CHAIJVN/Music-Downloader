@@ -165,17 +165,28 @@ $('target').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') $('btnPreview').click();
 });
 
+// 歌名必填、歌手可选，拼成搜索关键词
+function buildSearchKeyword() {
+  const title = ($('searchTitle') ? $('searchTitle').value : '').trim();
+  const artist = ($('searchArtist') ? $('searchArtist').value : '').trim();
+  if (!title) return { ok: false, title, artist, keyword: '' };
+  return { ok: true, title, artist, keyword: artist ? `${title} ${artist}` : title };
+}
+
 $('btnSearch').addEventListener('click', () => {
   state.fileTarget = '';
-  const kwEl = $('searchKw');
-  state.searchTarget = kwEl ? kwEl.value.trim() : '';
+  const q = buildSearchKeyword();
+  if (!q.ok) return log('[注意] 请先填写歌名（歌手可不填）', 'warn');
+  state.searchTarget = q.keyword;
   $('fileName').textContent = '未选择';
   $('target').value = '';
-  doSearch(state.searchTarget);
+  doSearch(q.keyword);
 });
-$('searchKw').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') $('btnSearch').click();
-});
+for (const id of ['searchTitle', 'searchArtist']) {
+  $(id).addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') $('btnSearch').click();
+  });
+}
 
 $('btnPickFile').addEventListener('click', async () => {
   const p = await window.api.pickFile();
@@ -209,7 +220,12 @@ for (const id of ['concurrency', 'limit', 'level']) {
 
 $('btnStart').addEventListener('click', async () => {
   const target = state.fileTarget || $('target').value.trim();
-  const search = state.searchTarget || '';
+  // 用户可能没点「搜索」直接点「开始下载」：此时按当前输入框现拼关键词
+  let search = state.searchTarget || '';
+  if (!target && !search) {
+    const q = buildSearchKeyword();
+    if (q.ok) search = q.keyword;
+  }
   if (!target && !search) return log('[注意] 请先填写链接、搜索歌名或选择清单文件', 'warn');
   const out = $('out').value.trim();
   if (!out) return log('[注意] 请选择输出目录', 'warn');

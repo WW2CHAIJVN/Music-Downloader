@@ -31,12 +31,13 @@
       </div>
 
       <div class="field">
-        <label for="searchKw">或按歌名搜索</label>
+        <label>或按歌名搜索</label>
         <div class="row">
-          <input id="searchKw" type="text" placeholder="歌名，可带歌手，如：周杰伦 晴天" />
+          <input id="searchTitle" type="text" placeholder="歌名（必填），如：晴天" />
+          <input id="searchArtist" type="text" placeholder="歌手（可选），如：周杰伦" />
           <button id="btnSearch" class="btn">搜索</button>
         </div>
-        <div class="hint">搜到的结果全部计入下载队列，可用「只下前 N 首」限制数量</div>
+        <div class="hint">只填歌名也能搜；填了歌手会精确到该歌手。结果全部计入下载队列，可用「只下前 N 首」限制数量</div>
       </div>
 
       <div class="field">
