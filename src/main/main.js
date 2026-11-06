@@ -23,6 +23,76 @@ let apiServer = null;
 let currentChild = null;
 let currentRun = null;
 
+// ---------- 版本更新检查 ----------
+const REPO = 'WW2CHAIJVN/Music-Downloader';
+const RELEASES_LATEST = `https://github.com/${REPO}/releases/latest`;
+const RELEASES_PAGE = `https://github.com/${REPO}/releases`;
+const RAW_PKG = `https://raw.githubusercontent.com/${REPO}/main/package.json`;
+
+// 把 v1.2.3 之类解析成 [1,2,3]
+function parseVer(v) {
+  const m = String(v || '').match(/(\d+)\.(\d+)\.(\d+)/);
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : [0, 0, 0];
+}
+function compareVer(a, b) {
+  const x = parseVer(a);
+  const y = parseVer(b);
+  for (let i = 0; i < 3; i++) {
+    if (x[i] !== y[i]) return x[i] > y[i] ? 1 : -1;
+  }
+  return 0;
+}
+
+async function fetchLatestVersion() {
+  const errors = [];
+  // 首选：/releases/latest 会 302 到 /releases/tag/<tag>
+  try {
+    const res = await fetch(RELEASES_LATEST, {
+      redirect: 'manual',
+      headers: { 'User-Agent': 'MusicDownloaderGUI' },
+    });
+    const loc = res.headers.get('location') || '';
+    const m = loc.match(/\/tag\/([^/?#]+)/);
+    if (m) return { tag: m[1], source: 'releases/latest' };
+    // 有的环境直接返回 200
+    if (res.ok) {
+      const html = await res.text();
+      const m2 = html.match(/\/releases\/tag\/([^"'\s/]+)/);
+      if (m2) return { tag: m2[1], source: 'releases/latest(html)' };
+    }
+  } catch (e) {
+    errors.push('releases/latest: ' + e.message);
+  }
+  // 兜底：读 main 分支的 package.json
+  try {
+    const res = await fetch(RAW_PKG, { headers: { 'User-Agent': 'MusicDownloaderGUI' } });
+    if (res.ok) {
+      const pkg = await res.json();
+      if (pkg.version) return { tag: 'v' + pkg.version, source: 'package.json' };
+    }
+  } catch (e) {
+    errors.push('raw package.json: ' + e.message);
+  }
+  throw new Error(errors.length ? errors.join(' | ') : '无法获取最新版本');
+}
+
+async function checkUpdate() {
+  const current = app.getVersion();
+  const latest = await fetchLatestVersion();
+  const latestVer = String(latest.tag).replace(/^v/i, '');
+  const hasUpdate = compareVer(latestVer, current) > 0;
+  return {
+    current,
+    latest: latestVer,
+    latestTag: latest.tag,
+    hasUpdate,
+    upToDate: !hasUpdate,
+    source: latest.source,
+    pageUrl: hasUpdate ? `${RELEASES_PAGE}/tag/${latest.tag}` : RELEASES_PAGE,
+    checkedAt: new Date().toISOString(),
+  };
+}
+
 // ---------- 用户数据 ----------
 function userDir() {
   const d = app.getPath('userData');
@@ -106,16 +176,65 @@ async function apiGet(pathname, params = {}) {
 }
 
 // ---------- 歌单预览 ----------
-function parseTarget(t) {
+// 网易云短链（163cn.tv / 163cn.tv/xxx）需要先跟随重定向拿到真实地址
+const SHORT_LINK_RE = /^https?:\/\/(?:163cn\.tv|dwz\.cn|t\.cn)\//i;
+
+async function expandShortLink(url) {
+  for (let i = 0; i < 8; i++) {
+    const res = await fetch(url, {
+      redirect: 'manual',
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+    });
+    const loc = res.headers.get('location');
+    if (!loc) {
+      // 已经是终点：可能是 200 的 HTML，也可能被换成了真实链接
+      const finalUrl = res.url || url;
+      const idm = finalUrl.match(/[?&#/]id=(\d+)/) || finalUrl.match(/(\d{6,})/);
+      if (idm) return finalUrl;
+      throw new Error('短链无法解析出歌单 ID: ' + url + '（最终地址 ' + finalUrl + '）');
+    }
+    url = new URL(loc, url).toString();
+    if (/163cn\.tv/.test(new URL(url).hostname) === false && /[?&]id=\d+/.test(url)) return url;
+  }
+  return url;
+}
+
+async function parseTarget(t) {
   const m =
     t.match(/(?:playlist|album|toplist)[^]*?[?&]id=(\d+)/i) || t.match(/[?&]id=(\d+)/);
-  if (m) return { kind: /album/.test(t) ? 'album' : 'playlist', id: m[1] };
+  if (m) {
+    const kind = /\/song\b|\?song/.test(t) ? 'song' : /album/.test(t) ? 'album' : 'playlist';
+    return { kind, id: m[1] };
+  }
   if (/^\d+$/.test(t)) return { kind: 'playlist', id: t };
+  // 短链：先展开再解析
+  if (SHORT_LINK_RE.test(t)) {
+    const real = await expandShortLink(t);
+    const m2 = real.match(/(?:playlist|album|toplist|song)[^]*?[?&]id=(\d+)/i) || real.match(/[?&]id=(\d+)/);
+    if (m2) {
+      const kind = /\/song\b/.test(real) ? 'song' : /album/.test(real) ? 'album' : 'playlist';
+      return { kind, id: m2[1] };
+    }
+    const m3 = real.match(/\/(\d{6,})(?:[/?#]|$)/);
+    if (m3) return { kind: 'playlist', id: m3[1] };
+    throw new Error('短链展开后仍找不到 ID: ' + real);
+  }
+  // 普通 http(s) 链接但没带 id：先跟随重定向再看
+  if (/^https?:\/\//i.test(t)) {
+    try {
+      const real = await expandShortLink(t);
+      const m4 = real.match(/[?&]id=(\d+)/);
+      if (m4) {
+        const kind = /\/song\b/.test(real) ? 'song' : /album/.test(real) ? 'album' : 'playlist';
+        return { kind, id: m4[1] };
+      }
+    } catch {}
+  }
   return { kind: 'file', id: t };
 }
 
 async function previewPlaylist(target) {
-  const t = parseTarget(String(target || '').trim());
+  const t = await parseTarget(String(target || '').trim());
   if (t.kind === 'file') {
     const lines = fs
       .readFileSync(t.id, 'utf8')
@@ -136,17 +255,30 @@ async function previewPlaylist(target) {
     }
     return { kind: 'file', name: path.basename(t.id, path.extname(t.id)), count: songs.length, songs };
   }
+  if (t.kind === 'song') {
+    const r = await apiGet('/song/detail', { ids: t.id });
+    const s = (r.songs || [])[0] || {};
+    return {
+      kind: 'song',
+      name: s.name || '',
+      creator: (s.ar || []).map((a) => a.name).join(', '),
+      count: 1,
+      songs: [{ name: s.name, artists: (s.ar || []).map((a) => a.name) }],
+    };
+  }
   if (t.kind === 'album') {
-    const r = await apiGet('/album', { id: t.id });
+    // 必须带 s 参数才返回曲目；曲目在顶层 r.songs
+    const r = await apiGet('/album', { id: t.id, s: 1000 });
     const al = r.album || {};
+    const list = (r.songs && r.songs.length ? r.songs : al.songs) || [];
     return {
       kind: 'album',
       name: al.name || '',
       creator: al.artist?.name || '',
-      count: (al.songs || []).length,
-      songs: (al.songs || []).map((s) => ({
+      count: list.length,
+      songs: list.map((s) => ({
         name: s.name,
-        artists: (s.ar || []).map((a) => a.name),
+        artists: (s.ar || s.artists || []).map((a) => a.name),
       })),
     };
   }
@@ -171,6 +303,23 @@ async function previewPlaylist(target) {
   };
 }
 
+// 歌名搜索预览
+async function searchPreview(keyword, limit = 20) {
+  const r = await apiGet('/search', { keywords: keyword, type: 1, limit });
+  const list = r.result?.songs || [];
+  return {
+    kind: 'search',
+    name: keyword,
+    creator: '搜索结果',
+    count: list.length,
+    songs: list.map((s) => ({
+      name: s.name,
+      artists: (s.artists || s.ar || []).map((a) => a.name),
+      album: s.album?.name || s.al?.name || '',
+    })),
+  };
+}
+
 // ---------- 下载进程 ----------
 function resolveFfmpeg(cfg) {
   if (cfg.ffmpeg && fs.existsSync(cfg.ffmpeg)) return cfg.ffmpeg;
@@ -183,7 +332,8 @@ function send(channel, payload) {
 
 function buildArgs(job) {
   const cfg = loadConfig();
-  const args = [job.target];
+  // 歌名搜索模式：用 --search 传关键词，不占目标位
+  const args = job.search ? ['--search', job.search] : [job.target];
   if (job.level && LEVELS.includes(job.level)) args.push('--level', job.level);
   if (job.chain && job.chain.length) args.push('--chain', job.chain.join(','));
   if (job.out) args.push('--out', job.out);
@@ -296,6 +446,21 @@ ipcMain.handle('app:info', async () => ({
   version: app.getVersion(),
 }));
 
+// 检查版本更新
+ipcMain.handle('update:check', async () => {
+  try {
+    return { ok: true, data: await checkUpdate() };
+  } catch (e) {
+    return { ok: false, message: e.message, current: app.getVersion() };
+  }
+});
+
+ipcMain.handle('update:openPage', async (_e, url) => {
+  const target = url || RELEASES_PAGE;
+  if (/^https:\/\/github\.com\//.test(target)) shell.openExternal(target);
+  return { ok: true };
+});
+
 ipcMain.handle('cfg:save', async (_e, patch) => {
   const cfg = { ...loadConfig(), ...patch };
   saveConfig(cfg);
@@ -327,6 +492,17 @@ ipcMain.handle('pl:preview', async (_e, target) => {
   try {
     await startApi();
     return { ok: true, data: await previewPlaylist(target) };
+  } catch (e) {
+    return { ok: false, message: e.message };
+  }
+});
+
+ipcMain.handle('search:preview', async (_e, keyword) => {
+  try {
+    await startApi();
+    const kw = String(keyword || '').trim();
+    if (!kw) return { ok: false, message: '请输入歌名' };
+    return { ok: true, data: await searchPreview(kw) };
   } catch (e) {
     return { ok: false, message: e.message };
   }

@@ -25,7 +25,7 @@ const { Readable } = require('stream');
 const { pipeline } = require('stream/promises');
 const { spawn } = require('child_process');
 
-const API = process.env.NCM_API || 'http://127.0.0.1:3001';
+const API = process.env.NCM_API || 'http://127.0.0.1:3141';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 
 // ---------- 参数解析 ----------
@@ -45,6 +45,7 @@ const opts = {
   tag: true,
   cover: false,
   dryRun: false,
+  search: '',
 };
 let target = null;
 for (let i = 0; i < argv.length; i++) {
@@ -61,11 +62,14 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === '--no-tag') opts.tag = false;
   else if (a === '--cover') opts.cover = true;
   else if (a === '--dry-run') opts.dryRun = true;
+  else if (a === '--search') { opts.search = next(); }
   else if (!target) target = a;
   else throw new Error('多余参数: ' + a);
 }
+// --search 把关键词本身当目标
+if (opts.search && !target) target = opts.search;
 if (!target) {
-  console.error('缺少目标。用法: node download.js <歌单ID|链接|songs.txt> [--level dolby --chain jymaster] [--out 目录]');
+  console.error('缺少目标。用法: node download.js <歌单ID|链接|songs.txt|歌名> [--search 歌名] [--level sky] [--out 目录]');
   process.exit(2);
 }
 for (const lv of [opts.level, ...opts.chain]) {
@@ -139,10 +143,26 @@ async function retry(fn, times = 3, delay = 800) {
 
 function parseTarget(t) {
   // 链接形式
-  const m = t.match(/(?:playlist|album|toplist)[^]*?[?&]id=(\d+)/i) || t.match(/[?&]id=(\d+)/);
-  if (m) return { kind: /album/.test(t) ? 'album' : 'playlist', id: m[1] };
-  if (/^\d+$/.test(t)) return { kind: 'playlist', id: t };
+  const m = t.match(/(?:playlist|album|toplist|song)[^]*?[?&]id=(\d+)/i) || t.match(/[?&]id=(\d+)/);
+  if (m) {
+    if (/\/song\b/.test(t)) return { kind: 'song', id: m[1] };
+    return { kind: /album/.test(t) ? 'album' : 'playlist', id: m[1] };
+  }
+  // 纯数字：显式 --song 当单曲，否则先试歌单、失败再按单曲
+  if (/^\d+$/.test(t)) return { kind: 'auto', id: t };
   return { kind: 'file', id: t };
+}
+
+async function fetchSong(id) {
+  const r = await retry(() => api('/song/detail', { ids: id }));
+  const s = (r.songs || [])[0];
+  if (!s) throw new Error('找不到歌曲 id=' + id);
+  return {
+    name: s.name,
+    creator: (s.ar || []).map((a) => a.name).join(', '),
+    songs: [s],
+    cover: s.al?.picUrl || '',
+  };
 }
 
 // ---------- 解析曲目 ----------
@@ -163,9 +183,26 @@ async function fetchPlaylist(id) {
 }
 
 async function fetchAlbum(id) {
-  const r = await retry(() => api('/album', { id }));
+  // 必须带 s 参数才会返回曲目列表；曲目在顶层 r.songs，不是 album.songs
+  const r = await retry(() => api('/album', { id, s: 1000 }));
   const al = r.album;
-  return { name: al.name, creator: al.artist?.name || '', songs: al.songs || [], cover: al.picUrl || '' };
+  if (!al) throw new Error('album 接口无数据: ' + JSON.stringify(r).slice(0, 200));
+  const songs = (r.songs && r.songs.length ? r.songs : al.songs) || [];
+  if (!songs.length) throw new Error('专辑「' + al.name + '」没有取到曲目（可能全部下架）');
+  return { name: al.name, creator: al.artist?.name || '', songs, cover: al.picUrl || '' };
+}
+
+// 按歌名（可带歌手）搜索，返回候选列表
+async function searchSongs(keyword, limit = 20) {
+  const r = await retry(() => api('/search', { keywords: keyword, type: 1, limit }));
+  const list = r.result?.songs || [];
+  return list.map((s) => ({
+    id: s.id,
+    name: s.name,
+    artists: (s.artists || s.ar || []).map((a) => a.name),
+    album: s.album?.name || s.al?.name || '',
+    duration: s.duration || s.dt || 0,
+  }));
 }
 
 function readSongsFile(file) {
@@ -246,8 +283,11 @@ async function downloadOne(song, index, pad, dir, coverUrl) {
   const got = await resolveUrl(song);
   if (!got) {
     stats.fail++;
-    failed.push(`${name}: 无可用链接（可能需要登录或已下架）`);
-    console.log(`  [FAIL] ${name}: 无可用链接`);
+    // 区分「下架」与「需登录」：st === -1 或无 fee 信息一般是下架/无版权
+    const offline = song.st === -1;
+    const reason = offline ? '已下架或无版权' : '无可用链接（可能需要登录 cookie）';
+    failed.push(`${name}: ${reason}`);
+    console.log(`  [FAIL] ${name}: ${reason}`);
     return;
   }
   const info = got.info;
@@ -346,8 +386,31 @@ function tagFile(tmp, out, song, cover) {
 
 // ---------- 主流程 ----------
 (async () => {
-  const t = parseTarget(target);
   let ctx;
+  // 歌名搜索模式：不在上面的任何 id/链接分支里
+  if (opts.search) {
+    const kw = opts.search;
+    console.log(`搜索: ${kw}`);
+    const hits = await searchSongs(kw, opts.limit || 20);
+    if (!hits.length) {
+      console.log('没搜到结果。');
+      return;
+    }
+    hits.forEach((h, i) => {
+      const dur = h.duration ? Math.floor(h.duration / 1000) + 's' : '';
+      console.log(`  ${i + 1}. ${h.name} - ${h.artists.join(', ')} @${h.album} ${dur}`);
+    });
+    ctx = {
+      name: '搜索-' + cleanName(kw),
+      creator: '搜索结果',
+      songs: hits.map((h) => ({ id: h.id, name: h.name, ar: h.artists.map((n) => ({ name: n })), al: { name: h.album } })),
+      cover: '',
+    };
+    // 用搜索结果继续走下面的下载流程
+  }
+
+  const t = ctx ? null : parseTarget(target);
+  if (!ctx) {
   if (t.kind === 'file') {
     if (!fs.existsSync(t.id)) throw new Error('文件不存在: ' + t.id);
     ctx = { name: path.basename(t.id, path.extname(t.id)), creator: '', songs: readSongsFile(t.id), cover: '' };
@@ -362,8 +425,25 @@ function tagFile(tmp, out, song, cover) {
     }
   } else if (t.kind === 'album') {
     ctx = await fetchAlbum(t.id);
+  } else if (t.kind === 'song') {
+    ctx = await fetchSong(t.id);
+  } else if (t.kind === 'auto') {
+    // 纯数字：先按歌单查，查不到再当单曲
+    try {
+      const pl = await fetchPlaylist(t.id);
+      if (pl.songs && pl.songs.length) ctx = pl;
+    } catch {}
+    if (!ctx) {
+      try {
+        ctx = await fetchSong(t.id);
+        console.log('（id 不是歌单，已按单曲处理）');
+      } catch {
+        ctx = await fetchPlaylist(t.id);
+      }
+    }
   } else {
     ctx = await fetchPlaylist(t.id);
+  }
   }
 
   if (opts.limit > 0) ctx.songs = ctx.songs.slice(0, opts.limit);
@@ -376,8 +456,8 @@ function tagFile(tmp, out, song, cover) {
     return;
   }
 
-  // 清单文件直接放 --out 根目录，歌单/专辑才建子目录
-  const dir = t.kind === 'file' ? opts.out : path.join(opts.out, cleanName(ctx.name));
+  // 清单文件直接放 --out 根目录，歌单/专辑/搜索才建子目录
+  const dir = t && t.kind === 'file' ? opts.out : path.join(opts.out, cleanName(ctx.name));
   fs.mkdirSync(dir, { recursive: true });
   console.log(`输出: ${dir}`);
   console.log(`音质链: ${LEVEL_CHAIN.join(' -> ')}` + (Object.keys(rules.artists).length ? ` | 歌手规则: ${JSON.stringify(rules.artists)}` : ''));

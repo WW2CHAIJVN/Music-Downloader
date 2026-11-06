@@ -7,3 +7,7 @@ src/core/cookie.txt
 src/core/_result.json
 .cover-*.tmp.jpg
 *.part
+# 编译产物与安装包
+MusicDownloader/
+MusicDownloader-Setup-*.exe
+*.blockmap

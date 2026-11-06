@@ -5,152 +5,150 @@
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline';" />
   <title>网易云歌单批量下载器</title>
-  <meta name="description" content="粘贴歌单链接或 ID，选音质档位，批量下载并按 ID3 写入标签与封面。" />
-  <link rel="stylesheet" href="fonts.css" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="bar" role="banner">
-    <div class="bar__id">
-      <span class="wordmark">netmusicbatch</span>
-      <span class="bar__sub">歌单批量下载</span>
+  <header class="topbar">
+    <div class="brand">网易云歌单批量下载器</div>
+    <div class="status">
+      <span id="verBadge" class="badge badge-off" title="点击检查更新">v-</span>
+      <span id="loginBadge" class="badge badge-off">未登录</span>
+      <span id="apiBadge" class="badge badge-off">API 未就绪</span>
     </div>
-    <p class="bar__state" aria-label="登录与接口状态">
-      <span id="loginBadge" class="chip chip--warn">未登录</span>
-      <span id="apiBadge" class="chip" role="status" aria-live="polite">API 未就绪</span>
-    </p>
-    <button id="btnLogin" class="btn btn--quiet btn--sm" type="button">登录 / Cookie</button>
-  </div>
+  </header>
 
-  <main class="layout" id="main">
-    <section class="sheet" aria-labelledby="h-source">
-      <h2 id="h-source" class="sheet__head">选择来源</h2>
+  <main class="layout">
+    <section class="panel panel-left">
+      <h2>1. 选择来源</h2>
 
       <div class="field">
-        <label for="target">歌单链接 / 歌单 ID / 专辑链接</label>
+        <label for="target">歌单 / 专辑 / 单曲链接或 ID</label>
         <div class="row">
-          <input id="target" type="text" spellcheck="false"
-                 placeholder="https://music.163.com/playlist?id=3778678 或 3778678" />
-          <button id="btnPreview" class="btn btn--quiet" type="button">解析</button>
+          <input id="target" type="text" placeholder="https://163cn.tv/xxxx 或 3778678" />
+          <button id="btnPreview" class="btn">解析</button>
         </div>
-        <p class="hint">支持 playlist / toplist / album 链接与纯数字 ID</p>
+        <div class="hint">支持 163cn.tv 短链、playlist / toplist / album / song 链接与纯数字 ID</div>
       </div>
 
       <div class="field">
-        <label for="btnPickFile">或选择曲目清单文件</label>
+        <label for="searchKw">或按歌名搜索</label>
         <div class="row">
-          <button id="btnPickFile" class="btn btn--quiet" type="button">选择文件</button>
+          <input id="searchKw" type="text" placeholder="歌名，可带歌手，如：周杰伦 晴天" />
+          <button id="btnSearch" class="btn">搜索</button>
+        </div>
+        <div class="hint">搜到的结果全部计入下载队列，可用「只下前 N 首」限制数量</div>
+      </div>
+
+      <div class="field">
+        <label>或选择曲目清单文件（.txt，每行以歌曲 ID 开头）</label>
+        <div class="row">
+          <button id="btnPickFile" class="btn btn-ghost">选择文件</button>
           <span id="fileName" class="muted">未选择</span>
         </div>
-        <p class="hint">.txt，每行以歌曲 ID 开头</p>
       </div>
 
       <div id="previewBox" class="preview hidden">
-        <div class="preview__head">
-          <strong id="plName" class="preview__name"></strong>
+        <div class="preview-head">
+          <strong id="plName"></strong>
           <span id="plMeta" class="muted"></span>
         </div>
         <ol id="plSongs" class="songlist"></ol>
       </div>
 
-      <h2 id="h-settings" class="sheet__head">下载设置</h2>
+      <h2>2. 下载设置</h2>
 
       <div class="field">
         <label for="level">音质档位</label>
-        <div class="select">
-          <select id="level">
-            <option value="standard">标准 standard 128k</option>
-            <option value="higher">较高 higher 192k</option>
-            <option value="exhigh">极高 exhigh 320k</option>
-            <option value="lossless">无损 lossless FLAC</option>
-            <option value="hires">Hi-Res hires</option>
-            <option value="jymaster">超清母带 jymaster</option>
-            <option value="jyeffect">高清臻音 jyeffect</option>
-            <option value="sky">沉浸环绕声 sky</option>
-            <option value="vivid">臻音全景声 vivid</option>
-            <option value="dolby">杜比全景声 dolby</option>
-          </select>
-        </div>
-        <p class="hint">无权限时自动降级到实际可用档位，日志会标注「降级」</p>
+        <select id="level">
+          <option value="standard">标准 standard 128k</option>
+          <option value="higher">较高 higher 192k</option>
+          <option value="exhigh">极高 exhigh 320k</option>
+          <option value="lossless">无损 lossless FLAC</option>
+          <option value="hires">Hi-Res hires</option>
+          <option value="jymaster">超清母带 jymaster</option>
+          <option value="jyeffect">高清臻音 jyeffect</option>
+          <option value="sky">沉浸环绕声 sky</option>
+          <option value="vivid">臻音全景声 vivid</option>
+          <option value="dolby">杜比全景声 dolby</option>
+        </select>
+        <div class="hint">无权限时自动降级到实际可用档位，日志会标注「降级」</div>
       </div>
 
       <div class="field">
-        <label for="chain">回落链（可选）</label>
-        <input id="chain" type="text" spellcheck="false" placeholder="例：jymaster,lossless" />
-        <p class="hint">逗号分隔，从左到右依次尝试</p>
+        <label for="chain">回落链（可选，逗号分隔）</label>
+        <input id="chain" type="text" placeholder="例：jymaster,lossless" />
       </div>
 
       <div class="field">
         <label for="out">输出目录</label>
         <div class="row">
-          <input id="out" type="text" spellcheck="false" />
-          <button id="btnPickOut" class="btn btn--quiet" type="button">浏览</button>
+          <input id="out" type="text" />
+          <button id="btnPickOut" class="btn btn-ghost">浏览</button>
         </div>
       </div>
 
       <div class="grid2">
         <div class="field">
           <label for="concurrency">并发数</label>
-          <input id="concurrency" type="number" min="1" max="16" value="4" inputmode="numeric" />
+          <input id="concurrency" type="number" min="1" max="16" value="4" />
         </div>
         <div class="field">
-          <label for="limit">只下前 N 首</label>
-          <input id="limit" type="number" min="0" value="0" inputmode="numeric" />
-          <p class="hint">0 表示全部</p>
+          <label for="limit">只下前 N 首（0=全部）</label>
+          <input id="limit" type="number" min="0" value="0" />
         </div>
       </div>
 
       <div class="row actions">
-        <button id="btnStart" class="btn btn--primary" type="button">开始下载</button>
-        <button id="btnStop" class="btn btn--quiet" type="button" disabled>停止</button>
-        <button id="btnOpenOut" class="btn btn--quiet" type="button">打开目录</button>
+        <button id="btnStart" class="btn btn-primary">开始下载</button>
+        <button id="btnStop" class="btn btn-danger" disabled>停止</button>
+        <button id="btnOpenOut" class="btn btn-ghost">打开目录</button>
       </div>
     </section>
 
-    <section class="run" aria-labelledby="h-run">
-      <div class="run__head">
-        <h2 id="h-run" class="sheet__head">运行状态</h2>
-        <span class="run__pct num" id="runPct" aria-live="polite">0%</span>
+    <section class="panel panel-right">
+      <div class="panel-head">
+        <h2>运行状态</h2>
+        <button id="btnLogin" class="btn btn-ghost btn-sm">登录 / Cookie</button>
       </div>
 
-      <div class="ledger" aria-label="下载进度">
-        <div class="ledger__cells">
-          <div class="stat stat--total"><span id="stTotal" class="stat__n num">0</span><label>总曲目</label></div>
-          <div class="stat stat--ok"><span id="stOk" class="stat__n num">0</span><label>成功</label></div>
-          <div class="stat stat--skip"><span id="stSkip" class="stat__n num">0</span><label>跳过</label></div>
-          <div class="stat stat--fail"><span id="stFail" class="stat__n num">0</span><label>失败</label></div>
-          <div class="stat stat--trial"><span id="stTrial" class="stat__n num">0</span><label>试听未下</label></div>
-        </div>
-        <div class="progress"><div id="bar" class="progress__fill"></div></div>
+      <div class="stats">
+        <div class="stat"><span id="stTotal">0</span><label>总曲目</label></div>
+        <div class="stat ok"><span id="stOk">0</span><label>成功</label></div>
+        <div class="stat skip"><span id="stSkip">0</span><label>跳过</label></div>
+        <div class="stat fail"><span id="stFail">0</span><label>失败</label></div>
+        <div class="stat trial"><span id="stTrial">0</span><label>试听未下</label></div>
       </div>
 
-      <pre id="log" class="log" tabindex="0" aria-label="运行日志"><span class="log__empty">还没有运行记录，开始下载后这里显示逐首结果</span></pre>
+      <div class="progress"><div id="bar" class="bar"></div></div>
+
+      <pre id="log" class="log"></pre>
     </section>
   </main>
 
   <div id="modal" class="modal hidden">
-    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-box">
       <div class="modal-head">
-        <strong id="modalTitle">登录 / Cookie</strong>
-        <button id="btnModalClose" class="btn btn--quiet btn--sm" type="button">关闭</button>
+        <strong>登录 / Cookie</strong>
+        <button id="btnModalClose" class="btn btn-ghost btn-sm">关闭</button>
       </div>
       <div class="field">
-        <label for="btnQr">扫码登录</label>
+        <label>扫码登录</label>
         <div class="row">
-          <button id="btnQr" class="btn" type="button">生成二维码</button>
+          <button id="btnQr" class="btn">生成二维码</button>
           <span id="qrStatus" class="muted"></span>
         </div>
-        <div id="qrBox" class="qrbox hidden"><img id="qrImg" alt="登录二维码" width="180" height="180" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" /></div>
+        <div id="qrBox" class="qrbox hidden"><img id="qrImg" alt="登录二维码" /></div>
       </div>
       <div class="field">
-        <label for="cookieInput">或粘贴 cookie（含 MUSIC_U=…）</label>
-        <textarea id="cookieInput" rows="4" spellcheck="false" placeholder="MUSIC_U=...; __csrf=..."></textarea>
+        <label for="cookieInput">或粘贴 cookie（含 MUSIC_U=...）</label>
+        <textarea id="cookieInput" rows="4" placeholder="MUSIC_U=...; __csrf=..."></textarea>
         <div class="row">
-          <button id="btnSaveCookie" class="btn btn--primary btn--sm" type="button">保存</button>
-          <button id="btnCheckLogin" class="btn btn--quiet btn--sm" type="button">检查登录状态</button>
-          <span id="cookieStatus" class="muted"></span>        </div>
+          <button id="btnSaveCookie" class="btn btn-primary btn-sm">保存</button>
+          <button id="btnCheckLogin" class="btn btn-ghost btn-sm">检查登录状态</button>
+          <span id="cookieStatus" class="muted"></span>
+        </div>
       </div>
-      <p class="hint">cookie 保存在用户数据目录，用于下载 VIP / 无损曲目；不登录会拿到 45 秒试听片段。</p>
+      <div class="hint">cookie 保存在用户数据目录，用于下载 VIP / 无损曲目；不登录会拿到 45 秒试听片段。</div>
     </div>
   </div>
 
